@@ -67,11 +67,14 @@ df$outcome <- as.factor(df$outcome)
 table(df$outcome)
 
 df <- df %>% mutate(HH_head_LF_status_c = case_when(
-  empsta1 == 1 ~ "not in labor force",
-  empsta1 == 2 ~ "unemployed and searching",
-  empsta1 %in% c(3,4,5,6) ~ "other",
-  empsta1 == 7 ~ "self-employed",
-  empsta1 == 8 ~ "employed by other",
+  empsta1 == "Not in labor force and not looking for work" ~ "not in labor force",
+  empsta1 == "Unemployed and looking for work" ~ "unemployed and searching",
+  empsta1 %in% c("Active-duty military",
+                 "Migrant farm laborer",
+                 "Nonmigrant farm laborer") ~ "other",
+  empsta1 %in% c("Self-employed, farming",
+                 "Self-employed, nonfarming") ~ "self-employed",
+  empsta1 == "Employed by other" ~ "employed by other",
   TRUE ~ NA
 ))
 
@@ -90,7 +93,8 @@ df <- df %>%
          months_since_recert_n = lastcert, #Months since last SNAP certification
          months_recertification_period_n = certmth, # months in certification period
          status_c = status, #1 amount correct, 2 overissuance, 3 underissuance
-         total_deductions_fs = fstotde2, #Total deductions
+         total_deductions_fs = fstotded,   # Total deductions (amount)
+         total_deductions_me = fstotde2,    # Marginal effectiveness
          total_assets_fs = fsasset, #total countable assets under state rules
          people_in_HH_n = ctprhh, #number of people in household
          action_type_c = actntype, #most recetn action type
@@ -172,6 +176,29 @@ df_recert_income_Sreporting <- df_recert_income %>% filter(ReportingRequirements
 ### 4. Feature set
 #############################################
 
+deduction_features <- c(
+  "fstotded",     # total deductions (amount)
+  "fsernded",     # earned income deduction
+  "fsstdded",     # standard deduction
+  "fsslted",      # excess shelter deduction
+  "fsmedded",     # medical deduction
+  "fsdepded",     # dependent care deduction
+  "fscsded",      # child support deduction
+  "rent", "util", "shelcap", "homeless_ded"
+)
+
+income_features <- c(
+  "fsgrinc", "fsnetinc",  # gross/net countable income
+  "fsearn", "fswages", "fsslfemp",  # earned/self-employment components
+  "fsunemp", "fssocsec", "fsssi", "fstanf"  # big unearned components
+)
+
+new_cat_features <- c(
+  "abwdst1",  # ABAWD status (mapped labels)
+  "rel1",      # relationship to head
+  "raceth1"
+)
+
 features <- c(
   "cert_HH_size_FS_n",            # certified household size
   #"people_in_HH_n", #hh size,
@@ -185,7 +212,7 @@ features <- c(
   "HH_head_LF_status_c", #lfstatus
   "total_deductions_fs",           # total deductions
   #  "net_income_FS",           # net income (optional but useful)
-  # "abwdst1",            # (keep if exists)
+  "abwdst1",            # (keep if exists)
   #  "expedited_i",           # expedited service
   #  "cat_elig",           # categorical eligibility 
   #"amount_rel_max",
@@ -194,7 +221,10 @@ features <- c(
   #"ReportingRequirements",
   "CertificationPeriods",
   "state",
-  "year"
+  "year",
+  deduction_features,
+  income_features,
+  new_cat_features
 )
 
 model_data_SandC <- df_recert_income_SandCreporting %>% select("income_error_c",all_of(features))
