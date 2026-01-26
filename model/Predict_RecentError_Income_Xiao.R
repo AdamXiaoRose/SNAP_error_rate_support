@@ -11,6 +11,8 @@ library(parsnip)
 library(stringr)
 library(nnet)
 library(xgboost)
+library(rpart)
+library(rpart.plot)
 
 tidymodels_prefer()
 
@@ -580,3 +582,47 @@ ggplot(actual_differences[actual_differences$n>29,], aes(x = benefit_level, y = 
 
 
 ggsave(filename="RECERT_Observed_HHSize_WA_vs_States_withSameOptions_by_incomeErrorsCounted.png", device="png", width = 10, height = 4, units = "in", dpi=300)
+
+
+#############################################
+### 8. Two-stage (Eric): pooled RF -> state trees
+#############################################
+
+# Use the pooled model from our run_ml output
+pooled_fit <- rf_recert_SO$fit
+
+# Predict on the WHOLE dataset
+pooled_probs <- predict(pooled_fit, new_data = model_data_SO, type = "prob")
+pooled_pred  <- bind_cols(model_data_SO, pooled_probs)
+
+# pick one probability as the “score” to explain per-state
+# Prefer probability of over_threshold
+pooled_pred <- pooled_pred %>%
+  # mutate(score = # wait to fill)
+
+# Fit a small regression tree within each state to explain the score
+state_keys <- pooled_pred %>% dplyr::group_by(state) %>% dplyr::group_keys()
+
+state_trees <- pooled_pred %>%
+  group_split(state) %>%
+  purrr::map(function(d){
+    # Remove prediction columns + outcome from predictors to avoid leakage
+    pred_cols <- names(d)[stringr::str_starts(names(d), ".pred_")]
+    d2 <- d %>% dplyr::select(-any_of(c("income_error_c", pred_cols)))
+    
+    rpart(
+      score ~ .,
+      data = d2,
+      method = "anova",
+      control = rpart.control(maxdepth = 3, cp = 0.01, minbucket = 20)
+    )
+  })
+
+names(state_trees) <- as.character(state_keys$state)
+
+# extract top split variables per state
+top_splits <- tibble(
+  state = names(state_trees),
+  top_var = sapply(state_trees, function(tr) tr$frame$var[1])
+)
+print(top_splits)
