@@ -591,7 +591,7 @@ ggsave(filename="RECERT_Observed_HHSize_WA_vs_States_withSameOptions_by_incomeEr
 # Use the pooled model from our run_ml output
 pooled_fit <- rf_recert_SO$fit
 
-# Predict on the WHOLE dataset
+# Predict on the whole dataset
 pooled_probs <- predict(pooled_fit, new_data = model_data_SO, type = "prob")
 pooled_pred  <- bind_cols(model_data_SO, pooled_probs)
 
